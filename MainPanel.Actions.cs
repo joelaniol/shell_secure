@@ -73,6 +73,14 @@ partial class MainPanel
         RefreshAll();
     }
 
+    void DoToggleHttpApi()
+    {
+        if (!EnsureInstalledForEditing(Loc.T("action.toggle_http_api"))) return;
+        _cfg.HttpApiProtect = !_cfg.HttpApiProtect;
+        if (!SaveConfig()) return;
+        RefreshAll();
+    }
+
     void DoSetLanguage(string lang)
     {
         if (!EnsureInstalledForEditing(Loc.T("action.change_language"))) return;

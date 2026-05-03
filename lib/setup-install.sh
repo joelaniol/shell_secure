@@ -12,6 +12,7 @@ write_protection_bundle() {
         "protection-tokenize.sh"
         "protection-delete.sh"
         "protection-ps.sh"
+        "protection-http.sh"
         "protection-git.sh"
         "protection-env.sh"
     )
@@ -107,6 +108,7 @@ BASHRC_BLOCK
     echo -e "    ${R}x${NC} rm -rf <ordner>         (in geschuetzten Pfaden)"
     echo -e "    ${R}x${NC} cmd /c rmdir /s /q ...  (in geschuetzten Pfaden)"
     echo -e "    ${R}x${NC} powershell Remove-Item   (in geschuetzten Pfaden)"
+    echo -e "    ${R}x${NC} curl API-Loeschungen     (authentifiziert + destruktiv)"
     echo ""
     echo "  Was erlaubt bleibt:"
     echo "  ─────────────────────────"

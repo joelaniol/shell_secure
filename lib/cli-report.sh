@@ -70,6 +70,13 @@ do_status() {
     if cfg_load "$INSTALL_DIR/config.conf"; then
         ok "Konfiguration vorhanden"
         echo ""
+        echo -e "  ${BOLD}Schutzarten:${NC}"
+        echo "    Delete:   ${SHELL_SECURE_DELETE_PROTECT:-true}"
+        echo "    Git:      ${SHELL_SECURE_GIT_PROTECT:-true}"
+        echo "    GitFlood: ${SHELL_SECURE_GIT_FLOOD_PROTECT:-true}"
+        echo "    HTTP/API: ${SHELL_SECURE_HTTP_API_PROTECT:-true}"
+        echo "    PS-UTF8:  ${SHELL_SECURE_PS_ENCODING_PROTECT:-true}"
+        echo ""
         echo -e "  ${BOLD}Geschuetzte Verzeichnisse:${NC}"
         for dir in "${SHELL_SECURE_PROTECTED_DIRS[@]}"; do
             echo "    $dir"

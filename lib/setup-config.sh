@@ -39,6 +39,7 @@ cfg_load() {
     SHELL_SECURE_GIT_FLOOD_PROTECT=true
     SHELL_SECURE_GIT_FLOOD_THRESHOLD=4
     SHELL_SECURE_GIT_FLOOD_WINDOW=60
+    SHELL_SECURE_HTTP_API_PROTECT=true
     SHELL_SECURE_PS_ENCODING_PROTECT=true
     SHELL_SECURE_LANGUAGE=en
     SHELL_SECURE_LOG='$HOME/.shell-secure/blocked.log'
@@ -94,6 +95,10 @@ cfg_load() {
             SHELL_SECURE_GIT_FLOOD_WINDOW="${BASH_REMATCH[1]}"
             continue
         fi
+        if [[ "$trimmed" =~ ^SHELL_SECURE_HTTP_API_PROTECT[[:space:]]*=[[:space:]]*(true|false)$ ]]; then
+            SHELL_SECURE_HTTP_API_PROTECT="${BASH_REMATCH[1]}"
+            continue
+        fi
         if [[ "$trimmed" =~ ^SHELL_SECURE_PS_ENCODING_PROTECT[[:space:]]*=[[:space:]]*(true|false)$ ]]; then
             SHELL_SECURE_PS_ENCODING_PROTECT="${BASH_REMATCH[1]}"
             continue
@@ -139,6 +144,9 @@ cfg_write() {
         echo "SHELL_SECURE_GIT_FLOOD_PROTECT=${SHELL_SECURE_GIT_FLOOD_PROTECT:-true}"
         echo "SHELL_SECURE_GIT_FLOOD_THRESHOLD=${SHELL_SECURE_GIT_FLOOD_THRESHOLD:-4}"
         echo "SHELL_SECURE_GIT_FLOOD_WINDOW=${SHELL_SECURE_GIT_FLOOD_WINDOW:-60}"
+        echo ""
+        echo "# HTTP API protection: block authenticated destructive curl calls"
+        echo "SHELL_SECURE_HTTP_API_PROTECT=${SHELL_SECURE_HTTP_API_PROTECT:-true}"
         echo ""
         echo "# PowerShell UTF-8 enforcement: block PS writes without -Encoding utf8"
         echo "SHELL_SECURE_PS_ENCODING_PROTECT=${SHELL_SECURE_PS_ENCODING_PROTECT:-true}"

@@ -83,6 +83,11 @@ do_status() {
     else
         echo -e "    ${Y}!${NC} Git-Flood-Schutz deaktiviert"
     fi
+    if [ "${SHELL_SECURE_HTTP_API_PROTECT:-true}" = "true" ]; then
+        echo -e "    ${G}+${NC} HTTP/API-Schutz fuer curl"
+    else
+        echo -e "    ${Y}!${NC} HTTP/API-Schutz deaktiviert"
+    fi
     if [ "${SHELL_SECURE_PS_ENCODING_PROTECT:-true}" = "true" ]; then
         echo -e "    ${G}+${NC} PowerShell-UTF-8-Pflicht"
     else

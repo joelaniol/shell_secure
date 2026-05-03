@@ -22,6 +22,10 @@ class ShellSecureConfig
     public bool GitFloodProtect = true;
     public int GitFloodThreshold = 4;
     public int GitFloodWindow = 60;
+    // HTTP/API-Schutz: blockt authentifizierte curl-Aufrufe mit destruktiver
+    // API-Semantik. Der Blocktext fordert explizite Nutzerfreigabe statt
+    // einen schnellen Kommando-Bypass zu bewerben.
+    public bool HttpApiProtect = true;
     // PowerShell-UTF-8-Schutz: blockt PS-Writes ohne -Encoding utf8.
     // Schuetzt vor dem haeufigen Agent-Bug, in dem "Set-Content" oder ">"
     // ohne explizite Encoding-Angabe Quellcode mit UTF-16-BOM korrumpiert.
@@ -69,6 +73,7 @@ class ShellSecureConfig
         GitFloodProtect = true;
         GitFloodThreshold = 4;
         GitFloodWindow = 60;
+        HttpApiProtect = true;
         PsEncodingProtect = true;
         Language = "en";
         LogConfigValue = "$HOME/.shell-secure/blocked.log";
@@ -98,6 +103,8 @@ class ShellSecureConfig
                 int v;
                 if (int.TryParse(mfw.Groups[1].Value, out v) && v >= 1) GitFloodWindow = v;
             }
+            var mha = Regex.Match(text, @"SHELL_SECURE_HTTP_API_PROTECT\s*=\s*(\w+)");
+            if (mha.Success) HttpApiProtect = mha.Groups[1].Value == "true";
             var mpe = Regex.Match(text, @"SHELL_SECURE_PS_ENCODING_PROTECT\s*=\s*(\w+)");
             if (mpe.Success) PsEncodingProtect = mpe.Groups[1].Value == "true";
             var mln = Regex.Match(text, @"SHELL_SECURE_LANGUAGE\s*=\s*""?([a-zA-Z-]+)""?");
@@ -182,6 +189,7 @@ class ShellSecureConfig
             sb.AppendLine("SHELL_SECURE_GIT_FLOOD_PROTECT=" + (GitFloodProtect ? "true" : "false"));
             sb.AppendLine("SHELL_SECURE_GIT_FLOOD_THRESHOLD=" + GitFloodThreshold);
             sb.AppendLine("SHELL_SECURE_GIT_FLOOD_WINDOW=" + GitFloodWindow);
+            sb.AppendLine("SHELL_SECURE_HTTP_API_PROTECT=" + (HttpApiProtect ? "true" : "false"));
             sb.AppendLine("SHELL_SECURE_PS_ENCODING_PROTECT=" + (PsEncodingProtect ? "true" : "false"));
             sb.AppendLine("SHELL_SECURE_LANGUAGE=" + (Language == "de" ? "de" : "en"));
             sb.AppendLine();

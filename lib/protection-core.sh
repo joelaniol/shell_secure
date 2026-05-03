@@ -2,7 +2,7 @@
 # Purpose: shared variables, config parser, path utilities, log writer, and the generic
 #          delete-block diagnostic. Used by every other protection slice.
 # Scope: no command wrappers; those live in protection-delete.sh / protection-ps.sh /
-#        protection-git.sh / protection-env.sh.
+#        protection-http.sh / protection-git.sh / protection-env.sh.
 
 # Robust HOME detection (fallback if HOME is empty)
 : "${HOME:=$(cd ~ 2>/dev/null && pwd)}"
@@ -23,6 +23,9 @@ SHELL_SECURE_GIT_PROTECT=true
 SHELL_SECURE_GIT_FLOOD_PROTECT=true
 SHELL_SECURE_GIT_FLOOD_THRESHOLD=4
 SHELL_SECURE_GIT_FLOOD_WINDOW=60
+# HTTP/API-Schutz: blockt authentifizierte curl-Aufrufe mit destruktiver
+# API-Semantik (DELETE oder POST/PATCH/PUT mit delete/drop/purge/... Payload).
+SHELL_SECURE_HTTP_API_PROTECT=true
 # PowerShell-UTF-8-Schutz: blockt schreibende PS-Aufrufe ohne -Encoding utf8.
 # Windows PowerShell 5.1 schreibt sonst UTF-16 LE BOM (Out-File, >) bzw. ANSI
 # (Set-Content, Add-Content), was Quellcode-Dateien beschaedigt.
@@ -85,6 +88,7 @@ _ss_load_config() {
     SHELL_SECURE_GIT_FLOOD_PROTECT=true
     SHELL_SECURE_GIT_FLOOD_THRESHOLD=4
     SHELL_SECURE_GIT_FLOOD_WINDOW=60
+    SHELL_SECURE_HTTP_API_PROTECT=true
     SHELL_SECURE_PS_ENCODING_PROTECT=true
     SHELL_SECURE_LANGUAGE=en
     SHELL_SECURE_LOG="$SHELL_SECURE_DIR/blocked.log"
@@ -143,6 +147,11 @@ _ss_load_config() {
 
         if [[ "$trimmed" =~ ^SHELL_SECURE_GIT_FLOOD_WINDOW[[:space:]]*=[[:space:]]*([0-9]+)$ ]]; then
             SHELL_SECURE_GIT_FLOOD_WINDOW="${BASH_REMATCH[1]}"
+            continue
+        fi
+
+        if [[ "$trimmed" =~ ^SHELL_SECURE_HTTP_API_PROTECT[[:space:]]*=[[:space:]]*(true|false)$ ]]; then
+            SHELL_SECURE_HTTP_API_PROTECT="${BASH_REMATCH[1]}"
             continue
         fi
 
@@ -321,6 +330,10 @@ _ss_git_protect_enabled() {
 
 _ss_git_flood_protect_enabled() {
     _ss_runtime_enabled && [ "$SHELL_SECURE_GIT_FLOOD_PROTECT" = "true" ]
+}
+
+_ss_http_api_protect_enabled() {
+    _ss_runtime_enabled && [ "$SHELL_SECURE_HTTP_API_PROTECT" = "true" ]
 }
 
 _ss_ps_encoding_protect_enabled() {

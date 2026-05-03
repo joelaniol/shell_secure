@@ -23,7 +23,7 @@ INSTALL_DIR="$HOME/.shell-secure"
 BASHRC="$HOME/.bashrc"
 MARKER_BEGIN="# >>> shell-secure >>>"
 MARKER_END="# <<< shell-secure <<<"
-VERSION="1.0.4"
+VERSION="1.0.5"
 
 # CLI colors
 RED='\033[0;31m'
@@ -38,6 +38,7 @@ source "$SCRIPT_DIR/lib/cli-config.sh"
 source "$SCRIPT_DIR/lib/cli-runtime.sh"
 source "$SCRIPT_DIR/lib/cli-install.sh"
 source "$SCRIPT_DIR/lib/cli-manage.sh"
+source "$SCRIPT_DIR/lib/cli-layers.sh"
 source "$SCRIPT_DIR/lib/cli-report.sh"
 source "$SCRIPT_DIR/lib/cli-dispatch.sh"
 

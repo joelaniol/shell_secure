@@ -292,6 +292,21 @@ partial class MainPanel
         stack.Children.Add(Sp(10));
 
         stack.Children.Add(BuildExpandableToggleRow(
+            "http_api",
+            Loc.T("settings.http_api.title"),
+            Loc.T("settings.http_api.hint"),
+            Detail(
+                "settings.details.http.blocked.delete",
+                "settings.details.http.blocked.destructive_payload",
+                "settings.details.http.blocked.authenticated"),
+            Detail(
+                "settings.details.http.allowed.readonly",
+                "settings.details.http.allowed.unauthenticated",
+                "settings.details.http.allowed.permission"),
+            out _httpApiToggle, out _httpApiDot, DoToggleHttpApi));
+        stack.Children.Add(Sp(10));
+
+        stack.Children.Add(BuildExpandableToggleRow(
             "ps_utf8",
             Loc.T("settings.ps_utf8.title"),
             Loc.T("settings.ps_utf8.hint"),
@@ -354,6 +369,7 @@ partial class MainPanel
         SetToggleVisual(_deleteToggle, _deleteDot, _cfg.DeleteProtect);
         SetToggleVisual(_gitToggle, _gitDot, _cfg.GitProtect);
         SetToggleVisual(_gitFloodToggle, _gitFloodDot, _cfg.GitFloodProtect);
+        SetToggleVisual(_httpApiToggle, _httpApiDot, _cfg.HttpApiProtect);
         SetToggleVisual(_psEncodingToggle, _psEncodingDot, _cfg.PsEncodingProtect);
         // Number inputs werden erneut von der aktuellen Config gespeist; bei
         // ungueltiger Eingabe wirkt das wie ein Revert auf den letzten

@@ -29,6 +29,8 @@ do_help() {
     echo "                        window <s>      Zeitfenster in Sekunden"
     echo "    ps-utf8 <sub>     PowerShell-UTF-8-Pflicht steuern:"
     echo "                        enable|disable|show"
+    echo "    http-api <sub>    Curl HTTP/API-Schutz steuern:"
+    echo "                        enable|disable|show"
     echo ""
     echo -e "  ${BOLD}Beispiele:${NC}"
     echo "    shell-secure install"
@@ -37,6 +39,7 @@ do_help() {
     echo "    shell-secure disable"
     echo "    shell-secure flood threshold 8"
     echo "    shell-secure ps-utf8 disable"
+    echo "    shell-secure http-api show"
     echo ""
     echo -e "  ${BOLD}Umgehen (fuer manuelle Operationen):${NC}"
     echo "    command rm -rf <pfad>       # Echten rm aufrufen"
@@ -61,6 +64,7 @@ main() {
         whitelist)  do_whitelist "${1:-}" ;;
         flood)      do_flood "${1:-}" "${2:-}" ;;
         ps-utf8)    do_ps_utf8 "${1:-}" ;;
+        http-api)   do_http_api "${1:-}" ;;
         log)        do_log "${1:-20}" ;;
         help|--help|-h)
                     do_help ;;

@@ -298,6 +298,7 @@ $protectionSlices = @(
     "lib\protection-tokenize.sh",
     "lib\protection-delete.sh",
     "lib\protection-ps.sh",
+    "lib\protection-http.sh",
     "lib\protection-git.sh",
     "lib\protection-env.sh"
 )

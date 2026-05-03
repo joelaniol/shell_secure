@@ -15,6 +15,7 @@ write_protection_bundle() {
         "protection-tokenize.sh"
         "protection-delete.sh"
         "protection-ps.sh"
+        "protection-http.sh"
         "protection-git.sh"
         "protection-env.sh"
     )

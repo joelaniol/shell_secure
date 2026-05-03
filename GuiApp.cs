@@ -135,6 +135,7 @@ partial class MainPanel : Window
     Border _gitFloodToggle, _gitFloodDot;
     System.Windows.Controls.TextBox _gitFloodThresholdInput;
     System.Windows.Controls.TextBox _gitFloodWindowInput;
+    Border _httpApiToggle, _httpApiDot;
     Border _psEncodingToggle, _psEncodingDot;
     TextBlock _gitBashLabel, _bashEnvLabel;
     StackPanel _whitelistPanel;
@@ -324,15 +325,17 @@ partial class MainPanel : Window
         }
 
         // Neueste Eintraege klassifizieren, damit der Toast klar sagt,
-        // was fuer eine Aktion blockiert wurde. Vier Layer sind moeglich:
+        // was fuer eine Aktion blockiert wurde. Fuenf Layer sind moeglich:
         //   - Delete   (rm/cmd/powershell Remove-Item)
         //   - Git      (stash/reset/clean/checkout/switch/restore/branch -D)
         //   - GitFlood (Rate-Limit auf Netzwerk-git-Calls)
+        //   - HttpApi  (curl mit authentifizierter destruktiver API-Semantik)
         //   - PsUtf8   (PowerShell-Write ohne -Encoding utf8)
-        // Layer-Marker stehen im 2. Pipe-Feld bei Flood/PS-Utf8 ("git-flood",
-        // "ps-encoding"). Fuer die anderen reicht das cmd-Praefix.
+        // Layer-Marker stehen im 2. Pipe-Feld bei Flood/HttpApi/PS-Utf8
+        // ("git-flood", "http-api", "ps-encoding"). Fuer die anderen reicht
+        // das cmd-Praefix.
         var recent = _cfg.GetLogLines(Math.Min(count, 5));
-        bool hasGit = false, hasDelete = false, hasGitFlood = false, hasPsUtf8 = false;
+        bool hasGit = false, hasDelete = false, hasGitFlood = false, hasHttpApi = false, hasPsUtf8 = false;
         string firstCmd = "", firstReason = "";
         foreach (var line in recent)
         {
@@ -351,6 +354,8 @@ partial class MainPanel : Window
 
             if (string.Equals(field2, "git-flood", StringComparison.OrdinalIgnoreCase))
                 hasGitFlood = true;
+            else if (string.Equals(field2, "http-api", StringComparison.OrdinalIgnoreCase))
+                hasHttpApi = true;
             else if (string.Equals(field2, "ps-encoding", StringComparison.OrdinalIgnoreCase))
                 hasPsUtf8 = true;
             else if (cmd.StartsWith("git ", StringComparison.OrdinalIgnoreCase)
@@ -368,10 +373,11 @@ partial class MainPanel : Window
         }
 
         int distinctLayers = (hasGit ? 1 : 0) + (hasDelete ? 1 : 0)
-            + (hasGitFlood ? 1 : 0) + (hasPsUtf8 ? 1 : 0);
+            + (hasGitFlood ? 1 : 0) + (hasHttpApi ? 1 : 0) + (hasPsUtf8 ? 1 : 0);
         string title;
         if (distinctLayers > 1) title = Loc.T("toast.multi");
         else if (hasGitFlood) title = Loc.T("toast.git_flood");
+        else if (hasHttpApi) title = Loc.T("toast.http_api");
         else if (hasPsUtf8) title = Loc.T("toast.ps_utf8");
         else if (hasGit) title = Loc.T("toast.git");
         else title = Loc.T("toast.delete");

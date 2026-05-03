@@ -1,12 +1,12 @@
 # AI Agent Secure
 
 <!-- ai-agent-secure-version:start -->
-**Current version:** `1.0.4` | Build `20260503.114302` | Built `2026-05-03 11:43:02 UTC`
+**Current version:** `1.0.5` | Build `20260503.160932` | Built `2026-05-03 16:09:32 UTC`
 
 See [VERSION](VERSION) for the build manifest.
 <!-- ai-agent-secure-version:end -->
 
-Shell and Git protection for AI coding agents on Windows (Git Bash / MSYS2) — covers recursive directory deletion, dangerous git operations, runaway git rate-limiting, and PowerShell UTF-8 enforcement.
+Shell and Git protection for AI coding agents on Windows (Git Bash / MSYS2) — covers recursive directory deletion, dangerous git operations, runaway git rate-limiting, authenticated destructive `curl` API calls, and PowerShell UTF-8 enforcement.
 
 ## Screenshots
 
@@ -20,17 +20,17 @@ Shell and Git protection for AI coding agents on Windows (Git Bash / MSYS2) — 
   <img src="screenshots/ai-agent-secure-about.png" alt="About page with version and build information" width="30%">
 </p>
 
-A `rm -rf` in the wrong directory wipes out years of work. A `git stash` on the wrong worktree silently buries uncommitted changes nobody pops back. A `git reset --hard` on dirty files leaves no Reflog trail. A `powershell Set-Content` without `-Encoding utf8` corrupts source files with UTF-16 BOM. A wedged agent fires `git fetch` four times a second and floods the credential prompt. AI Agent Secure intercepts all of these **before** they do damage.
+A `rm -rf` in the wrong directory wipes out years of work. A `git stash` on the wrong worktree silently buries uncommitted changes nobody pops back. A `git reset --hard` on dirty files leaves no Reflog trail. A `curl -X POST` with a bearer token can delete a hosted volume or database through an API. A `powershell Set-Content` without `-Encoding utf8` corrupts source files with UTF-16 BOM. A wedged agent fires `git fetch` four times a second and floods the credential prompt. AI Agent Secure intercepts all of these **before** they do damage.
 
 ### Why this exists
 
-AI coding agents (Codex, Claude Code, etc.) routinely execute shell commands on your machine — including recursive deletes and stash operations. A [documented incident on Windows](https://community.openai.com/t/potential-destructive-command-mis-parsing-on-windows-agent-cleanup-via-cmd-c-may-delete-workspace-content-instead-of-target-folder/1376026/2) showed how `cmd /c rmdir` mis-parsing caused an agent to wipe an entire workspace instead of a temporary folder. The `git stash` problem is subtler: agents stash changes, switch branches, and forget to pop — work then sits invisibly in the stash list until the next session overwrites it. AI Agent Secure was built to prevent both classes of accident.
+AI coding agents (Codex, Claude Code, etc.) routinely execute shell commands on your machine — including recursive deletes, stash/reset/clean operations, remote git calls, API calls, and PowerShell writes. A [documented incident on Windows](https://community.openai.com/t/potential-destructive-command-mis-parsing-on-windows-agent-cleanup-via-cmd-c-may-delete-workspace-content-instead-of-target-folder/1376026/2) showed how `cmd /c rmdir` mis-parsing caused an agent to wipe an entire workspace instead of a temporary folder. Other failure modes are subtler: agents stash changes and forget to pop, hard-reset dirty files, spin on remote git operations, call destructive provider APIs with broad tokens, or write files through PowerShell's legacy encodings. AI Agent Secure was built to put local guardrails in front of those asymmetric-risk commands.
 
 ---
 
 ## What gets intercepted?
 
-AI Agent Secure runs the **Shell-Secure protection core** with three independent layers, each with its own toggle: `SHELL_SECURE_DELETE_PROTECT`, `SHELL_SECURE_GIT_PROTECT` (plus `SHELL_SECURE_GIT_FLOOD_PROTECT` as a sub-layer), and `SHELL_SECURE_PS_ENCODING_PROTECT`.
+AI Agent Secure runs the **Shell-Secure protection core** with independent layers, each with its own toggle: `SHELL_SECURE_DELETE_PROTECT`, `SHELL_SECURE_GIT_PROTECT` (plus `SHELL_SECURE_GIT_FLOOD_PROTECT` as a sub-layer), `SHELL_SECURE_HTTP_API_PROTECT`, and `SHELL_SECURE_PS_ENCODING_PROTECT`.
 
 ### 1. Delete protection
 
@@ -79,7 +79,31 @@ The git layer wraps the operations that most often cause silent uncommitted-work
 
 **Git Flood Protection** — separate layer that rate-limits *network* git calls (`push`, `pull`, `fetch`, `clone`, `ls-remote`) to catch agents that spin out and hammer the auth pipeline or push/pull loop. Lives behind its own toggle `SHELL_SECURE_GIT_FLOOD_PROTECT` and stays active even when `SHELL_SECURE_GIT_PROTECT=false` (so you can keep flood protection while opting out of the destructive guards). Defaults: max **4 calls per 60 seconds**, configurable via `SHELL_SECURE_GIT_FLOOD_THRESHOLD` and `SHELL_SECURE_GIT_FLOOD_WINDOW`. Non-network subcommands (`status`, `log`, `diff`, `branch -a`, …) are never counted. State lives in `~/.shell-secure/git-rate.log` and entries older than the window are pruned automatically; blocked calls do **not** count toward the bucket so the limiter recovers cleanly.
 
-### 3. PowerShell UTF-8 enforcement
+### 3. HTTP/API protection
+
+The HTTP/API layer wraps `curl`, `curl.exe`, and common Windows case variants such as `Curl.exe` to catch a common agent failure mode: an authenticated API call that carries destructive intent. It is deliberately heuristic, but conservative around credentials.
+
+Blocked forms:
+
+| Pattern | Behavior |
+|---|---|
+| `curl -X DELETE -H "Authorization: Bearer ..."` | Blocked |
+| Authenticated `POST` / `PUT` / `PATCH` with action/operation fields, destructive GraphQL mutations, or API paths like `delete`, `destroy`, `drop`, `truncate`, `purge`, `wipe`, `revoke`, etc. | Blocked |
+| GraphQL delete mutations such as `volumeDelete` with a bearer token/API key | Blocked |
+| `env ... curl ...` / `env ... Curl.exe ...` simple forms | Still intercepted |
+
+Allowed forms:
+
+| Pattern | Behavior |
+|---|---|
+| Read-only `GET` / query calls | Allowed |
+| Unauthenticated destructive-looking examples, useful for docs/tests | Allowed |
+| Authenticated POSTs without destructive markers | Allowed |
+| Search/query payloads and preview endpoints that mention destructive words as ordinary text | Allowed |
+
+The block message intentionally does **not** advertise a quick `command curl ...` bypass. It tells the operator to ask the user for explicit permission, verify the environment and resource ID, and prefer provider UI, dry-run, or non-destructive preview when possible. For longer intentional admin sessions, set `SHELL_SECURE_HTTP_API_PROTECT=false` temporarily and turn it back on afterwards. Auth headers, API keys, cookies, basic-auth values, OAuth bearer values, URL userinfo, and request payloads are redacted before stderr/log output.
+
+### 4. PowerShell UTF-8 enforcement
 
 A separate layer (toggle `SHELL_SECURE_PS_ENCODING_PROTECT`, default **on**) catches a different agent failure mode: writing files via PowerShell without `-Encoding utf8`. Windows PowerShell 5.1 defaults to UTF-16 LE BOM (`Out-File`, `>`, `>>`) or ANSI/CP-1252 (`Set-Content`, `Add-Content`), so a careless `powershell -c "Set-Content config.json '{...}'"` corrupts source files with BOM bytes — and the file then looks like binary garbage to anything that expects UTF-8.
 
@@ -104,7 +128,7 @@ Other git operations (`commit`, `rebase`, …) are **not** intercepted today. Th
 
 ## How does it work?
 
-The Shell-Secure core defines shell wrapper functions for `rm`, `cmd`, `cmd.exe`, `powershell`, `powershell.exe`, `git`, `Git`, `git.exe`, `Git.exe`, and `env`. These are loaded at the start of every Bash session via `.bashrc`, and additionally for non-interactive shells via `BASH_ENV`.
+The Shell-Secure core defines shell wrapper functions for `rm`, `cmd`, `cmd.exe`, common PowerShell/Git/Curl executable spellings such as `powershell.exe`, `Git.exe`, `Curl.exe`, and `env`. These are loaded at the start of every Bash session via `.bashrc`, and additionally for non-interactive shells via `BASH_ENV`.
 
 ### Delete check flow
 
@@ -195,18 +219,19 @@ Paths are normalized before comparison:
 
 - **Protected areas** — Configure folders, projects, or whole drives
 - **Whitelist** — Build artifacts like `node_modules`, `dist`, `.cache` etc. can still be deleted
-- **Per-category toggles** — `SHELL_SECURE_DELETE_PROTECT` and `SHELL_SECURE_GIT_PROTECT` can be flipped independently of the master switch
+- **Per-category toggles** — Delete, Git, Git Flood, HTTP/API, and PowerShell UTF-8 layers can be flipped independently of the master switch
 - **Git stash guard** — Blocks captures on dirty worktrees and any mutation on existing stash entries; honours `git -C /path` and `--git-dir`
 - **Git reset --hard guard** — Blocks `git reset --hard` only when uncommitted tracked changes would be lost; clean trees and `--soft` / `--mixed` resets pass through
 - **Git clean guard** — Blocks `git clean -f` only when something would actually be removed; dry-runs (`-nfd`), interactive (`-i`), and no-op runs pass through
 - **Git checkout / switch / restore guard** — Blocks the worktree-overwriting forms (`-f`, `--`, `.`, `--discard-changes`, `restore` default mode) only when tracked changes would be lost; pure branch switches and `restore --staged` always pass through
 - **Git branch -D guard** — Blocks `git branch -D <name>` only when the branch is unmerged into HEAD; force-delete on a merged branch passes through, lowercase `-d` is left to git's own safety check
 - **Git flood protection** — Rate-limits network git calls (`push`/`pull`/`fetch`/`clone`/`ls-remote`) to catch runaway agents; default 4 per 60 s, separately toggleable via `SHELL_SECURE_GIT_FLOOD_PROTECT`
+- **HTTP/API protection** — Blocks authenticated destructive `curl` calls such as `DELETE` requests or delete/drop/purge API mutations; toggleable via `SHELL_SECURE_HTTP_API_PROTECT`
 - **PowerShell UTF-8 enforcement** — Blocks `Set-Content` / `Out-File` / `>` writes that would emit UTF-16 LE BOM or ANSI; covers `powershell`, `pwsh`, and case variants; toggleable via `SHELL_SECURE_PS_ENCODING_PROTECT`
 - **Logging** — Every blocked command is logged with a timestamp
 - **On/Off** — Disable protection at any time without uninstalling
 - **Non-interactive shells** — Also active in scripts and subshells via `BASH_ENV`
-- **Bypass** — Intentional deletion is always possible with `command rm -rf ...`; intentional stash is `command git stash ...`
+- **Manual release** — Intentional local deletion/git mutation is possible with the usual shell bypass; destructive HTTP/API calls are deliberately routed through explicit user permission and the `SHELL_SECURE_HTTP_API_PROTECT` toggle instead of a one-line bypass hint
 
 ## Installation
 
@@ -246,7 +271,7 @@ source ~/.bashrc
 After installation, the config lives at `~/.shell-secure/config.conf`:
 
 ```bash
-# Master switch — turning this off disables both layers below.
+# Master switch — turning this off disables every protection layer below.
 SHELL_SECURE_ENABLED=true
 
 # Per-category toggles — only effective while ENABLED=true.
@@ -258,6 +283,8 @@ SHELL_SECURE_GIT_PROTECT=true
 SHELL_SECURE_GIT_FLOOD_PROTECT=true
 SHELL_SECURE_GIT_FLOOD_THRESHOLD=4    # max calls
 SHELL_SECURE_GIT_FLOOD_WINDOW=60      # seconds
+# HTTP/API protection: authenticated destructive curl calls
+SHELL_SECURE_HTTP_API_PROTECT=true
 # PowerShell UTF-8 enforcement: block writes that would emit UTF-16 BOM / ANSI
 SHELL_SECURE_PS_ENCODING_PROTECT=true
 
@@ -287,7 +314,7 @@ shell-secure add "E:/Work"
 shell-secure remove "E:/Work"
 
 # Add a whitelist entry
-shell-secure whitelist add ".output"
+shell-secure whitelist ".output"
 
 # Show status
 shell-secure status
@@ -348,7 +375,7 @@ $ git fetch    # 5th time within 60 s
 
   [Shell-Secure] BLOCKED
   ------------------------------------
-  Layer:   Shell-Secure (Git-Flood-Schutz)
+  Layer:   Shell-Secure (Git Flood Protection)
   Reason:  More than 4 network git calls in the last 60 s.
            A runaway agent would otherwise spam the auth prompt or
            trigger an unintended push/pull loop.
@@ -361,11 +388,31 @@ $ git fetch    # 5th time within 60 s
 ```
 
 ```
+$ curl -X POST -H "Authorization: Bearer ..." \
+    --json '{"query":"mutation { volumeDelete(id:\"vol_123\") { id } }"}' \
+    https://backboard.railway.com/graphql
+
+  [Shell-Secure] BLOCKED
+  ------------------------------------
+  Layer:   Shell-Secure (HTTP API Protection)
+  Reason:  Authenticated API request with destructive payload.
+           Method: POST. Authenticated API deletes can permanently
+           remove databases, volumes, backups, or projects.
+  ------------------------------------
+  Better:  Ask the user for explicit permission first, verify environment
+           and resource ID, and prefer provider UI or dry-run when possible.
+  ------------------------------------
+  Manual:  Re-run only after explicit user approval, or temporarily set
+           SHELL_SECURE_HTTP_API_PROTECT=false for an intentional admin session.
+  ------------------------------------
+```
+
+```
 $ powershell -c "Set-Content config.json '{...}'"
 
   [Shell-Secure] BLOCKED
   ------------------------------------
-  Layer:   Shell-Secure (PowerShell-UTF-8-Schutz)
+  Layer:   Shell-Secure (PowerShell UTF-8 Protection)
   Reason:  PowerShell write without -Encoding utf8.
            Windows PowerShell 5.1 defaults to UTF-16 LE BOM (Out-File, >)
            or ANSI/CP-1252 (Set-Content, Add-Content). Source files end
@@ -409,6 +456,10 @@ git reset --hard HEAD                    # OK if `git status` is clean
 # Clean dry-runs and interactive mode always pass through
 git clean -nfd                           # OK (dry-run)
 git clean -i                             # OK (interactive prompts)
+
+# Read-only or unauthenticated curl calls pass through
+curl https://api.example.test/status      # OK
+curl -X DELETE https://api.example.test/docs/example  # OK without credentials
 
 # Clean is allowed when there is nothing to remove
 git clean -fd                            # OK if no untracked files exist
@@ -460,8 +511,8 @@ shell-secure <command>
   test                       Run self-test
   add <path>                 Add a protected area
   remove <path>              Remove a protected area
-  whitelist                  Manage whitelist (add/remove/list)
-  log                        Show blocked commands
+  whitelist <name>           Add an allowed delete-target name
+  log [n]                    Show recent blocked commands
 
   flood show                 Show git-flood threshold/window
   flood enable | disable     Toggle git-flood protection
@@ -470,6 +521,9 @@ shell-secure <command>
 
   ps-utf8 show               Show PS UTF-8 enforcement status
   ps-utf8 enable | disable   Toggle PS UTF-8 enforcement
+
+  http-api show              Show HTTP/API protection status
+  http-api enable | disable  Toggle authenticated destructive curl protection
 ```
 
 ## Uninstall
@@ -490,6 +544,7 @@ Only needed if you want to compile the GUI yourself. End users don't need this.
 
 - **.NET Framework 4.8+ compiler** (`csc.exe`) — compiles the GUI
 - **PowerShell** — runs the build script
+- **Git Bash** — validates embedded shell scripts during the build
 
 The build updates `VERSION` and the README version block, so GitHub shows the current build after the change is committed and pushed.
 
