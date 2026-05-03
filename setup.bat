@@ -2,7 +2,7 @@
 :: Purpose: launch setup.sh through a Git for Windows bash.exe.
 :: Scope: Git Bash discovery only; setup behavior lives in setup.sh and lib/setup-*.sh.
 setlocal
-title Shell-Secure Setup
+title AI Agent Secure Setup
 cd /d "%~dp0"
 
 :: Dynamische Suche nach Git Bash

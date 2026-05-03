@@ -206,6 +206,17 @@ $end
     }
 
     [IO.File]::WriteAllText($readmePath, $readme, $utf8NoBom)
+
+    foreach ($entrypoint in @("setup.sh", "shell-secure.sh")) {
+        $entrypointPath = Join-Path $PSScriptRoot $entrypoint
+        $source = [IO.File]::ReadAllText($entrypointPath)
+        $versionLine = 'VERSION="' + $Metadata.Version + '"'
+        $updated = [regex]::Replace($source, '(?m)^VERSION="[^"]*"', $versionLine, 1)
+        if ($updated -eq $source -and $source -notmatch '(?m)^VERSION="[^"]*"') {
+            throw "VERSION-Zeile nicht gefunden: $entrypoint"
+        }
+        [IO.File]::WriteAllText($entrypointPath, $updated, $utf8NoBom)
+    }
 }
 
 function Remove-ExistingBuildOutput {
