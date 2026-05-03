@@ -4,7 +4,8 @@
 # Scope: If lib/protection.sh or config/default.conf changes, this build must prove the shipped EXE matches them.
 
 param(
-    [switch]$NoVersionFileUpdate
+    [switch]$NoVersionFileUpdate,
+    [switch]$RegenerateIcon
 )
 
 . (Join-Path $PSScriptRoot "tools\git-bash-discovery.ps1")
@@ -257,7 +258,10 @@ try {
 # ── Icon bereitstellen ──
 $iconPath = Join-Path $PSScriptRoot "shell-secure.ico"
 $iconMaker = Join-Path $PSScriptRoot "make-icon.ps1"
-if (Test-Path -LiteralPath $iconMaker) {
+if ($RegenerateIcon) {
+    if (-not (Test-Path -LiteralPath $iconMaker)) {
+        throw "Icon-Generator fehlt: $iconMaker"
+    }
     Write-Host "Generiere Icon..." -ForegroundColor Cyan
     & powershell -NoProfile -ExecutionPolicy Bypass -File $iconMaker
     if ($LASTEXITCODE -ne 0) {
@@ -266,6 +270,13 @@ if (Test-Path -LiteralPath $iconMaker) {
 }
 elseif (Test-Path -LiteralPath $iconPath) {
     Write-Host "Nutze vorhandenes Icon..." -ForegroundColor Cyan
+}
+elseif (Test-Path -LiteralPath $iconMaker) {
+    Write-Host "Icon fehlt, generiere aus lokalem Generator..." -ForegroundColor Cyan
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $iconMaker
+    if ($LASTEXITCODE -ne 0) {
+        throw "Icon-Generierung fehlgeschlagen."
+    }
 }
 else {
     throw "Icon fehlt: $iconPath"
