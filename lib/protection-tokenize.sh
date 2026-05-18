@@ -26,10 +26,36 @@ _ss_tokenize_powershell_args() {
             "'"|'"')
                 quote="$ch"
                 ;;
-            " "|$'\t'|$'\r'|$'\n'|";")
+            " "|$'\t'|$'\r'|$'\n')
                 if [ -n "$token" ]; then
                     _ss_ps_tokens+=("$token")
                     token=""
+                fi
+                ;;
+            ";")
+                if [ -n "$token" ]; then
+                    _ss_ps_tokens+=("$token")
+                    token=""
+                fi
+                _ss_ps_tokens+=(";")
+                ;;
+            "|")
+                if [ -n "$token" ]; then
+                    _ss_ps_tokens+=("$token")
+                    token=""
+                fi
+                _ss_ps_tokens+=("|")
+                ;;
+            ">")
+                if [ -n "$token" ]; then
+                    _ss_ps_tokens+=("$token")
+                    token=""
+                fi
+                if [ $((i + 1)) -lt ${#s} ] && [ "${s:i+1:1}" = ">" ]; then
+                    _ss_ps_tokens+=(">>")
+                    ((i++))
+                else
+                    _ss_ps_tokens+=(">")
                 fi
                 ;;
             *)

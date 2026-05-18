@@ -30,9 +30,9 @@ class ShellSecureConfig
     // semantics. The block text asks for explicit user permission instead of
     // advertising a quick command bypass.
     public bool HttpApiProtect = true;
-    // PowerShell UTF-8 protection: block PS writes without -Encoding utf8.
-    // Guards against the common agent bug where "Set-Content" or ">" corrupts
-    // source code with UTF-16 BOM when no explicit encoding is supplied.
+    // PowerShell UTF-8 protection: block PS writes without explicit UTF-8.
+    // Guards against the common agent bug where PS cmdlets, redirection, or
+    // inline .NET text writes corrupt source code when encoding is ambiguous.
     public bool PsEncodingProtect = true;
     // GUI language preference (en/de). Shell runtime block diagnostics stay
     // English/ASCII so agent and terminal bridges cannot mojibake them.

@@ -31,7 +31,7 @@ SHELL_SECURE_GIT_LEAK_TIMEOUT=60
 # HTTP/API protection: block authenticated curl calls with destructive API
 # semantics (DELETE or POST/PATCH/PUT with delete/drop/purge/... payload).
 SHELL_SECURE_HTTP_API_PROTECT=true
-# PowerShell UTF-8 protection: block writing PS calls without -Encoding utf8.
+# PowerShell UTF-8 protection: block writing PS calls without explicit UTF-8.
 # Otherwise Windows PowerShell 5.1 writes UTF-16 LE BOM (Out-File, >) or ANSI
 # (Set-Content, Add-Content), damaging source files.
 SHELL_SECURE_PS_ENCODING_PROTECT=true

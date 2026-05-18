@@ -162,7 +162,7 @@ cfg_write() {
         echo "# HTTP API protection: block authenticated destructive curl calls"
         echo "SHELL_SECURE_HTTP_API_PROTECT=${SHELL_SECURE_HTTP_API_PROTECT:-true}"
         echo ""
-        echo "# PowerShell UTF-8 enforcement: block PS writes without -Encoding utf8"
+        echo "# PowerShell UTF-8 enforcement: block PS writes without explicit UTF-8 encoding"
         echo "SHELL_SECURE_PS_ENCODING_PROTECT=${SHELL_SECURE_PS_ENCODING_PROTECT:-true}"
         echo ""
         echo "# GUI language preference (en/de); shell block diagnostics stay English/ASCII"

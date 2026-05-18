@@ -1,7 +1,7 @@
 # AI Agent Secure
 
 <!-- ai-agent-secure-version:start -->
-**Current version:** `1.1.3` | Build `20260507.090803` | Built `2026-05-07 09:08:03 UTC`
+**Current version:** `1.1.4` | Build `20260518.205410` | Built `2026-05-18 20:54:10 UTC`
 
 See [VERSION](VERSION) for the build manifest.
 <!-- ai-agent-secure-version:end -->
@@ -111,7 +111,7 @@ The block message intentionally does **not** advertise a quick `command curl ...
 
 ### 4. PowerShell UTF-8 enforcement
 
-A separate layer (toggle `SHELL_SECURE_PS_ENCODING_PROTECT`, default **on**) catches a different agent failure mode: writing files via PowerShell without `-Encoding utf8`. Windows PowerShell 5.1 defaults to UTF-16 LE BOM (`Out-File`, `>`, `>>`) or ANSI/CP-1252 (`Set-Content`, `Add-Content`), so a careless `powershell -c "Set-Content config.json '{...}'"` corrupts source files with BOM bytes or invalid single-byte umlauts — and the file then looks like binary garbage or mojibake to anything that expects UTF-8.
+A separate layer (toggle `SHELL_SECURE_PS_ENCODING_PROTECT`, default **on**) catches a different agent failure mode: writing files via PowerShell without explicit UTF-8 encoding. Windows PowerShell 5.1 defaults to UTF-16 LE BOM (`Out-File`, `>`, `>>`) or ANSI/CP-1252 (`Set-Content`, `Add-Content`), so a careless `powershell -c "Set-Content config.json '{...}'"` corrupts source files with BOM bytes or invalid single-byte umlauts — and the file then looks like binary garbage or mojibake to anything that expects UTF-8.
 
 Blocked forms:
 
@@ -119,6 +119,8 @@ Blocked forms:
 |---|---|
 | `Set-Content`, `Add-Content`, `Out-File`, `Tee-Object` (or `tee`) without `-Encoding utf8` | Blocked |
 | `>` and `>>` redirection (PS 5.1 default-encodes, ignores `-Encoding`) | Blocked |
+| Inline `.NET` text writes such as `[System.IO.File]::WriteAllText(...)` without a visible UTF-8 encoding | Blocked |
+| Inline `.NET` text writes with `[System.Text.UTF8Encoding]`, `[System.Text.Encoding]::UTF8`, `utf8NoBOM`, `utf-8`, or `65001` | Allowed |
 | Same cmdlets with `-Encoding utf8` / `utf-8` / `utf8NoBOM` / `utf8BOM` | Allowed |
 | Multiple write cmdlets in one script: encoding count must match write count, all UTF-8 | Allowed only when both conditions hold |
 | Read-only cmdlets (`Get-Content`, `cat`, `type`, …) | Always allowed |
@@ -126,7 +128,7 @@ Blocked forms:
 
 Coverage: `powershell`, `powershell.exe`, `PowerShell`, `Powershell`, `PowerShell.exe`, `Powershell.exe`, plus PowerShell 7's `pwsh` and `pwsh.exe`. Bypass via `command powershell ...` if you really need ANSI/UTF-16 output for a Windows-native consumer.
 
-Known gap: `[System.IO.File]::WriteAllText("...")` and other inline .NET method calls aren't reliably detectable from a string and are **not** intercepted. Use the cmdlet form (`Set-Content -Encoding utf8 ...`) for guaranteed coverage.
+Known gap: raw byte writes such as `[System.IO.File]::WriteAllBytes(...)` are not blocked because they are often legitimate binary writes and have no text-encoding contract. Use the source-encoding QA gate to catch persisted invalid UTF-8 in text files.
 
 Runtime protection catches PowerShell writes that pass through a loaded Shell-Secure session. Direct editor writes, standalone PowerShell sessions, or other tools can still bypass runtime wrappers, so release QA should also validate source text as UTF-8 without BOM before packaging.
 
@@ -236,7 +238,7 @@ Paths are normalized before comparison:
 - **Git leak protection** — Warns before `git push` publishes likely secret files or agent workspace data; handles default pushes, explicit refspecs, `--repo`, `--tags`, `--all`, and `--mirror`; blocks automatically after the allow timeout and supports audited `SHELL_SECURE_GIT_LEAK_FORCE=1` for reviewed agent pushes
 - **Git flood protection** — Rate-limits network git calls (`push`/`pull`/`fetch`/`clone`/`ls-remote`) to catch runaway agents; default 4 per 60 s, separately toggleable via `SHELL_SECURE_GIT_FLOOD_PROTECT`
 - **HTTP/API protection** — Blocks authenticated destructive `curl` calls such as `DELETE` requests or delete/drop/purge API mutations; toggleable via `SHELL_SECURE_HTTP_API_PROTECT`
-- **PowerShell UTF-8 enforcement** — Blocks `Set-Content` / `Out-File` / `>` writes that would emit UTF-16 LE BOM or ANSI; covers `powershell`, `pwsh`, and case variants; toggleable via `SHELL_SECURE_PS_ENCODING_PROTECT`
+- **PowerShell UTF-8 enforcement** — Blocks `Set-Content` / `Out-File` / `>` and inline `.NET` text writes that do not visibly use UTF-8; covers `powershell`, `pwsh`, and case variants; toggleable via `SHELL_SECURE_PS_ENCODING_PROTECT`
 - **Logging** — Every blocked command is logged with a timestamp
 - **On/Off** — Disable protection at any time without uninstalling
 - **Non-interactive shells** — Also active in scripts and subshells via `BASH_ENV`
@@ -297,7 +299,7 @@ SHELL_SECURE_GIT_LEAK_PROTECT=true
 SHELL_SECURE_GIT_LEAK_TIMEOUT=60      # seconds to type "allow"
 # HTTP/API protection: authenticated destructive curl calls
 SHELL_SECURE_HTTP_API_PROTECT=true
-# PowerShell UTF-8 enforcement: block writes that would emit UTF-16 BOM / ANSI
+# PowerShell UTF-8 enforcement: block writes without explicit UTF-8
 SHELL_SECURE_PS_ENCODING_PROTECT=true
 
 # Protected areas
@@ -446,7 +448,7 @@ $ powershell -c "Set-Content config.json '{...}'"
   [Shell-Secure] BLOCKED
   ------------------------------------
   Layer:   Shell-Secure (PowerShell UTF-8 Protection)
-  Reason:  PowerShell write without -Encoding utf8.
+  Reason:  PowerShell write without explicit UTF-8 encoding.
            Windows PowerShell 5.1 defaults to UTF-16 LE BOM (Out-File, >)
            or ANSI/CP-1252 (Set-Content, Add-Content). Source files end
            up with BOM bytes and look like binary garbage to anything

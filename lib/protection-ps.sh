@@ -11,7 +11,8 @@
 # Agents that run "powershell -c \"echo 'foo' > file.txt\"" or "Set-Content file"
 # without -Encoding utf8 corrupt source files this way (BOM bytes at the start,
 # every ASCII character preceded by 0x00); readers then see apparent machine
-# code instead of text.
+# code instead of text. Inline .NET text writes are also blocked unless the
+# command line visibly names a UTF-8 encoding.
 
 declare -ag _ss_ps_encoding_values=()
 
@@ -52,42 +53,113 @@ _ss_ps_encoding_value_is_utf8() {
     return 1
 }
 
-# Heuristic for .NET write methods in PS inline scripts:
-# [System.IO.File]::WriteAllText / WriteAllLines / WriteAllBytes /
-# AppendAllText / AppendAllLines write UTF-8 WITH BOM by default on .NET
-# Framework. This is less catastrophic than UTF-16 BOM, but still corrupts
-# source text for BOM-sensitive tools. Block only when a destructive encoding
-# class is passed explicitly (UnicodeEncoding, ASCIIEncoding, UTF7Encoding,
-# UTF32Encoding, BigEndianUnicode, Default). The 2-arg form (without Encoding)
-# remains allowed because the .NET default is UTF-8 (with BOM); the block hint
-# mentions that risk.
-_ss_ps_call_uses_destructive_dotnet_write() {
+# Heuristic for .NET text writes in PS inline scripts. Static File calls do not
+# use PowerShell's "-Encoding" flag, so require a visible UTF-8 encoding object
+# or a clearly named UTF-8 variable. WriteAllBytes is intentionally not included
+# because it is often used for real binary assets and has no text encoding
+# contract.
+_ss_ps_token_is_safe_dotnet_utf8_signal() {
+    local lower="$1"
+    case "$lower" in
+        *utf8encoding*|*encoding]::utf8*|*::utf8*)
+            return 0
+            ;;
+        *encoding*utf-8*|*encoding*65001*)
+            return 0
+            ;;
+        *'$utf8nobom'*|*'$utf8bom'*|*'$utf8encoding'*)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+_ss_ps_is_command_boundary() {
+    case "$1" in
+        ";"|"|") return 0 ;;
+    esac
+    return 1
+}
+
+_ss_ps_is_write_cmdlet() {
+    case "${1,,}" in
+        set-content|add-content|out-file|tee-object|tee) return 0 ;;
+    esac
+    return 1
+}
+
+_ss_ps_write_cmdlet_has_safe_encoding() {
+    local start_index="$1"
+    local i token next_tok
+    local n=${#_ss_ps_tokens[@]}
+    for ((i = start_index + 1; i < n; i++)); do
+        token="${_ss_ps_tokens[$i],,}"
+        _ss_ps_is_command_boundary "$token" && break
+
+        if [[ "$token" =~ ^-encoding: ]]; then
+            _ss_ps_encoding_value_is_utf8 "${token#-encoding:}" && return 0
+            return 1
+        fi
+
+        if [ "$token" = "-encoding" ]; then
+            if [ $((i + 1)) -lt "$n" ]; then
+                next_tok="${_ss_ps_tokens[$((i + 1))],,}"
+                _ss_ps_is_command_boundary "$next_tok" && return 1
+                _ss_ps_encoding_value_is_utf8 "$next_tok" && return 0
+            fi
+            return 1
+        fi
+    done
+    return 1
+}
+
+_ss_ps_dotnet_text_write_is_unsafe() {
+    local start_index="$1"
     local i token lower
     local n=${#_ss_ps_tokens[@]}
-    local has_dotnet_write=false
-    local has_destructive_encoding=false
+    local has_safe_utf8_encoding=false
     for ((i = 0; i < n; i++)); do
+        if [ "$i" -lt "$start_index" ]; then
+            continue
+        fi
         token="${_ss_ps_tokens[$i]}"
         lower="${token,,}"
-        # .NET Method Detection: [System.IO.File]::WriteAllText etc.
-        # PS tokenizer treats this as one token. A substring match is enough.
-        case "$lower" in
-            *writealltext*|*writealllines*|*writeallbytes*|*appendalltext*|*appendalllines*)
-                has_dotnet_write=true
-                ;;
-        esac
+        _ss_ps_is_command_boundary "$lower" && break
+        _ss_ps_token_is_safe_dotnet_utf8_signal "$lower" && has_safe_utf8_encoding=true
         # Destructive encoding constructors/statics in .NET calls.
         case "$lower" in
             *unicodeencoding*|*asciiencoding*|*utf7encoding*|*utf32encoding*|*bigendianunicode*)
-                has_destructive_encoding=true
+                return 0
                 ;;
             *::unicode*|*::ascii*|*::utf7*|*::utf32*|*::default*|*::oem*)
                 # [System.Text.Encoding]::Unicode, ::ASCII, ::UTF7, ...
-                has_destructive_encoding=true
+                return 0
                 ;;
         esac
     done
-    $has_dotnet_write && $has_destructive_encoding && return 0
+    $has_safe_utf8_encoding && return 1
+    return 0
+}
+
+_ss_ps_token_is_dotnet_text_write() {
+    local lower="${1,,}"
+    case "$lower" in
+        *::writealltext*|*::writealllines*|*::appendalltext*|*::appendalllines*)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+_ss_ps_call_uses_unsafe_dotnet_text_write() {
+    local i
+    local n=${#_ss_ps_tokens[@]}
+    for ((i = 0; i < n; i++)); do
+        if _ss_ps_token_is_dotnet_text_write "${_ss_ps_tokens[$i]}" &&
+            _ss_ps_dotnet_text_write_is_unsafe "$i"; then
+            return 0
+        fi
+    done
     return 1
 }
 
@@ -96,16 +168,16 @@ _ss_ps_call_uses_destructive_dotnet_write() {
 #   1) Write cmdlets without enough "-Encoding utf8" flags.
 #   2) ">"/">>" redirection: always unsafe in PS 5.1 because > uses the
 #      default encoding and accepts no -Encoding flag.
+#   3) Inline .NET text writes without a visible safe UTF-8 encoding.
 _ss_ps_call_writes_unsafe_encoding() {
     local has_redirect=false
-    local write_count=0
     local i token
     local n=${#_ss_ps_tokens[@]}
     for ((i = 0; i < n; i++)); do
         token="${_ss_ps_tokens[$i],,}"
         case "$token" in
             set-content|add-content|out-file|tee-object|tee)
-                write_count=$((write_count + 1))
+                _ss_ps_write_cmdlet_has_safe_encoding "$i" || return 0
                 ;;
             ">"|">>")
                 has_redirect=true
@@ -116,26 +188,12 @@ _ss_ps_call_writes_unsafe_encoding() {
     # Redirection always uses default encoding: unsafe regardless of flags.
     $has_redirect && return 0
 
-    # .NET write with an explicit destructive encoding class (UnicodeEncoding,
-    # ASCIIEncoding, etc.) -> block. Without an explicit encoding class the
-    # 2-arg form continues because the .NET default is UTF-8 (with BOM).
-    if _ss_ps_call_uses_destructive_dotnet_write; then
+    # .NET text writes must visibly name a safe UTF-8 encoding. This catches
+    # inline WriteAllText/AppendAllText snippets that would otherwise bypass
+    # the cmdlet-specific "-Encoding utf8" requirement.
+    if _ss_ps_call_uses_unsafe_dotnet_text_write; then
         return 0
     fi
-
-    [ "$write_count" -eq 0 ] && return 1
-
-    _ss_ps_extract_encoding_values
-
-    # Need at least as many -Encoding values as write cmdlets so each cmdlet can
-    # have its own flag. On mismatch, block conservatively instead of guessing
-    # which cmdlet gets which flag.
-    [ ${#_ss_ps_encoding_values[@]} -lt "$write_count" ] && return 0
-
-    local v
-    for v in "${_ss_ps_encoding_values[@]}"; do
-        _ss_ps_encoding_value_is_utf8 "$v" || return 0
-    done
 
     return 1
 }
@@ -152,13 +210,13 @@ _ss_block_ps_encoding() {
     echo "  $(_ss_t block.label.blocked_by)$(_ss_t block.layer.ps_encoding)" >&2
     echo "  $(_ss_t block.label.command)$full" >&2
     if [ "$lang" = "de" ]; then
-        echo "  $(_ss_t block.label.reason)PowerShell schreibt eine Datei ohne -Encoding utf8." >&2
+        echo "  $(_ss_t block.label.reason)PowerShell schreibt eine Datei ohne explizites UTF-8-Encoding." >&2
         echo "                 Windows PowerShell 5.1 defaultet auf UTF-16 LE BOM (Out-File, >)" >&2
         echo "                 bzw. ANSI/CP-1252 (Set-Content, Add-Content). Quellcode-Dateien" >&2
         echo "                 landen so mit BOM- oder CP1252/ANSI-Bytes im Arbeitsbaum;" >&2
         echo "                 UTF-8-Reader zeigen dann Mojibake oder Ersatzzeichen." >&2
     else
-        echo "  $(_ss_t block.label.reason)PowerShell writes a file without -Encoding utf8." >&2
+        echo "  $(_ss_t block.label.reason)PowerShell writes a file without explicit UTF-8 encoding." >&2
         echo "                 Windows PowerShell 5.1 defaults to UTF-16 LE BOM (Out-File, >)" >&2
         echo "                 or ANSI/CP-1252 (Set-Content, Add-Content). Source files end up" >&2
         echo "                 with BOM or CP1252/ANSI bytes in the worktree; UTF-8 readers" >&2
@@ -169,11 +227,13 @@ _ss_block_ps_encoding() {
     if [ "$lang" = "de" ]; then
         echo "    Set-Content -Encoding utf8 -Path file.txt -Value 'content'" >&2
         echo "    'content' | Out-File -Encoding utf8 file.txt" >&2
+        echo "    [System.IO.File]::WriteAllText('file.txt', 'content', [System.Text.UTF8Encoding]::new(\$false))" >&2
         echo "    # oder direkt aus Git Bash, das schreibt immer UTF-8:" >&2
         echo "    echo 'content' > file.txt" >&2
     else
         echo "    Set-Content -Encoding utf8 -Path file.txt -Value 'content'" >&2
         echo "    'content' | Out-File -Encoding utf8 file.txt" >&2
+        echo "    [System.IO.File]::WriteAllText('file.txt', 'content', [System.Text.UTF8Encoding]::new(\$false))" >&2
         echo "    # or directly from Git Bash, which always writes UTF-8:" >&2
         echo "    echo 'content' > file.txt" >&2
     fi
@@ -188,7 +248,7 @@ _ss_block_ps_encoding() {
     fi
     _ss_block_rule
     echo "" >&2
-    _ss_log "BLOCKED | $full | ps-encoding | write without -Encoding utf8"
+    _ss_log "BLOCKED | $full | ps-encoding | write without explicit UTF-8 encoding"
     return 1
 }
 
@@ -200,7 +260,7 @@ powershell() {
 
     # Two independent layers with separate toggles:
     #   1) Delete protection (Remove-Item -Recurse inside protected areas)
-    #   2) UTF-8 protection (Set-Content/Out-File/> without -Encoding utf8)
+    #   2) UTF-8 protection (Set-Content/Out-File/.NET text writes without UTF-8)
     # Both off -> skip parsing overhead and pass through.
     if ! _ss_delete_protect_enabled && ! _ss_ps_encoding_protect_enabled; then
         command "$cmd_name" "$@"
